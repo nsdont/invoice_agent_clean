@@ -4,7 +4,7 @@
 
 ## 工作流概述
 
-![工作流概览](../assets/n8n_workflow_overview.png)
+![工作流概览](./assets/n8n_workflow_overview.png)
 
 工作流程包含以下主要阶段：
 1. 表单提交 PDF 或 Image - 接收上传的发票文件
