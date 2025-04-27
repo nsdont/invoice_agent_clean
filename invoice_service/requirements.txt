@@ -1,0 +1,21 @@
+flask>3.0.2
+pytesseract>0.3.10
+Pillow>10.0.0
+python-dotenv>1.0.0
+numpy>=2.2.5
+gunicorn>21.2.0
+easyocr>1.7.0
+opencv-python-headless>4.8.0.74
+requests>2.31.0
+openai>1.12.0
+# thefuzz替代fuzzywuzzy，使用rapidfuzz作为后端提供更高效的模糊匹配
+thefuzz>=0.20.0
+# python-Levenshtein是可选依赖，但建议安装以提高性能
+python-Levenshtein>0.23.0
+pydantic>2.5.2
+tqdm>4.66.1 
+openai
+# google-generativeai 已弃用，使用 google-genai 代替
+google-genai>=1.0.0
+PyPDF2
+pdf2image

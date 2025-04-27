@@ -1,0 +1,477 @@
+{
+  "name": "Invoice Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Order Info",
+        "formDescription": "The order details provided by the customer",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "customer_name",
+              "placeholder": "Please enter your name"
+            },
+            {
+              "fieldLabel": "file",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf,.png,.jpeg",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "08ef1c82-7ddf-4f3f-b47d-bed7bb173073",
+      "name": "表单提交 PDF 或 Image",
+      "webhookId": "dff1f557-6eda-43cf-8de1-95fc7d8fca24"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item     = $input.first();\nconst formData = item.json;\nconst binary   = item.binary || {};\n\nconst fileKeys = Object\n  .keys(binary)\n  .filter(k => k.startsWith('file_') || k === 'file');\n\nif (fileKeys.length === 0) {\n  throw new Error('未找到任何上传文件');\n}\n\nconst customerName = formData.customer_name || '';\n\nconst files = fileKeys.map(key => {\n  const f = binary[key];\n  return {\n    fileName   : f.fileName || 'unknown',\n    mimeType   : f.mimeType,\n    base64Data : f.data,\n  };\n});\n\nreturn [\n  {\n    json: {\n      customerName,\n      files,                 // ← 包含所有文件的数组\n      timestamp: new Date().toISOString(),\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        0
+      ],
+      "id": "dba4aa2b-265b-4afe-ba82-e0279c5c0ce5",
+      "name": "表单检查"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5000/ocr",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "files",
+              "value": "={{ $json.files }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.customerName }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        0
+      ],
+      "id": "0bf48a03-4653-4b5e-8950-43d7c9a4e93b",
+      "name": "OCR文本提取"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5000/extract",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $('表单检查').item.json.customerName }}"
+            },
+            {
+              "name": "ocr_file_path",
+              "value": "={{ $json.combined_ocr_file }}"
+            },
+            {
+              "name": "task_id",
+              "value": "={{ $json.task_id }}"
+            },
+            {
+              "name": "source_type",
+              "value": "={{ $json.source_type }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ],
+      "id": "c50fe4d5-d6b9-47e7-96fc-c7b90bdad76c",
+      "name": "文本结构化提取订单"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5000/match",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_data",
+              "value": "={{ $json.order_data }}"
+            },
+            {
+              "name": "threshold",
+              "value": "=0.6"
+            },
+            {
+              "name": "task_id",
+              "value": "={{ $json.task_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 99990000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        0
+      ],
+      "id": "5cc019cc-0401-4a50-a09b-8da67cdfbdeb",
+      "name": "产品数据匹配"
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "binaryPropertyName": "={{ $json.order_data }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1740,
+        -220
+      ],
+      "id": "b6634017-86dc-454c-b46d-fdd84a000cb7",
+      "name": "处理成功"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "11d60776-4023-4773-a5cb-302a7a4e3d4c",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        0
+      ],
+      "id": "f363a35c-d721-415e-9349-0d05ed2a0db7",
+      "name": "匹配是否执行成功"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afef90ad-68c2-4385-8101-3172aac986fb",
+              "leftValue": "={{ $json.order_data.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1480,
+        -80
+      ],
+      "id": "f2bc300c-f7a1-4988-8d87-7b5c8635e423",
+      "name": "处理结果是否为完成"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sdfsdf",
+          "mode": "id"
+        },
+        "text": "=无法从以下文件提取订单信息: 文件名: {{ $('表单提交 PDF 或 Image').item.json.file }} 时间: {{$node[\"表单检查\"].json.timestamp}} 原因: {{$node[\"文本结构化提取订单\"].json.error || \"未能识别订单数据\"}}  请手动检查此文件。",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        820,
+        260
+      ],
+      "id": "22b6f3b2-4536-4ae6-9bbd-05370932f32c",
+      "name": "发送通知-订单提取为空",
+      "webhookId": "ea332b25-c6e7-4685-982a-d091d1602707",
+      "credentials": {
+        "slackApi": {
+          "id": "naGtPeo1fNvcENpl",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4e42ce9-ae8d-4f52-998c-bb15c17c7926",
+              "leftValue": "={{ $json.order_data.items }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            },
+            {
+              "id": "0755770c-11ee-4f63-8ca0-6c28b211013a",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        0
+      ],
+      "id": "89dd1509-db1d-48d2-8eea-8ed9dcca9b0e",
+      "name": "是否有订单"
+    },
+    {
+      "parameters": {
+        "fromEmail": "1@q.com",
+        "toEmail": "1@q.com",
+        "subject": "=订单处理需要人工审核:  {{ $('表单提交 PDF 或 Image').item.json.file}}",
+        "html": "=<h2>订单需要人工审核</h2>\n<p><strong>文件名:</strong> {{ $('表单提交 PDF 或 Image').item.json.file}}</p>\n<p><strong>客户:</strong> {{$node[\"表单检查\"].json.customerName || \"未提供\"}}</p>\n<p><strong>日期:</strong> {{$node[\"产品数据匹配\"].json.order_data.order_date || \"未识别\"}}</p>\n\n<h3>需要审核的产品:</h3>\n<ul>\n{{#each $node[\"产品数据匹配\"].json.order_data.items}}\n  {{#if this.needs_review}}\n  <li style=\"color: red;\">\n    原文本: {{this.original_input}} → 匹配: {{this.matched_name || \"未匹配\"}} \n    (匹配分数: {{Math.round(this.match_score * 100)}}%, 数量: {{this.quantity}})\n  </li>\n  {{/if}}\n{{/each}}\n</ul>\n\n<p>请登录系统进行人工审核。</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1960,
+        20
+      ],
+      "id": "77bb956b-8695-406b-a7f8-200e359c88d9",
+      "name": "发送失败邮件通知",
+      "webhookId": "8dd5a1f0-a671-441a-9f22-24e523953b54",
+      "credentials": {
+        "smtp": {
+          "id": "uOIVK0wpek8FBMc2",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "binaryPropertyName": "={{ $json.order_data }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1740,
+        20
+      ],
+      "id": "195a6f59-26e0-4a62-ba69-6fcf69e4f080",
+      "name": "暂存"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "表单提交 PDF 或 Image": {
+      "main": [
+        [
+          {
+            "node": "表单检查",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "表单检查": {
+      "main": [
+        [
+          {
+            "node": "OCR文本提取",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR文本提取": {
+      "main": [
+        [
+          {
+            "node": "文本结构化提取订单",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "文本结构化提取订单": {
+      "main": [
+        [
+          {
+            "node": "是否有订单",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "产品数据匹配": {
+      "main": [
+        [
+          {
+            "node": "匹配是否执行成功",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "匹配是否执行成功": {
+      "main": [
+        [
+          {
+            "node": "处理结果是否为完成",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "暂存",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "处理结果是否为完成": {
+      "main": [
+        [
+          {
+            "node": "处理成功",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "暂存",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "是否有订单": {
+      "main": [
+        [
+          {
+            "node": "产品数据匹配",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "发送通知-订单提取为空",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "暂存": {
+      "main": [
+        [
+          {
+            "node": "发送失败邮件通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "bc5fc657-da20-497b-93f1-24631cb75ff2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c011a2369eeec22239ae1dc1640ffd07b75f8347fe549147b7821b1e591437a0"
+  },
+  "id": "Wg7RDND4LezrZiZX",
+  "tags": []
+}
